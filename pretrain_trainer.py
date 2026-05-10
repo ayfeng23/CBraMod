@@ -120,9 +120,13 @@ class Trainer(object):
                     masked_x = x[mask == 1]
                     masked_y = y[mask == 1]
                     loss = self.criterion(masked_y, masked_x)
-                else:
+                elif self.params.objective == "recon":
                     y = self.model(x)
                     loss = self.criterion(y, x)
+                elif self.params.objective == "ntp":
+                    y = self.model(x[:, :, :-1, :])
+                    labels = x[:, :, 1:, :]
+                    loss = self.criterion(y, labels)
                 loss.backward()
                 # clip_grad_norm_ returns the *pre-clip* total norm; capture it for logging.
                 # Pass inf when clipping is disabled so we still get the norm without scaling.
@@ -152,7 +156,7 @@ class Trainer(object):
                     'epoch/lr': learning_rate,
                     'epoch/index': epoch + 1,
                 }, step=global_step)
-            if  mean_loss < best_loss or (epoch % 10 == 0):
+            if  mean_loss < best_loss or (epoch % 5 == 0):
                 model_path = rf'{self.params.model_dir}/epoch{epoch+1}_loss{mean_loss}.pth'
                 torch.save(self.model.state_dict(), model_path)
                 torch.save({

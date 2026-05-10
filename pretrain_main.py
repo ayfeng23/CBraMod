@@ -73,7 +73,8 @@ def main():
     )
     if params.objective == "ntp":
         params.need_mask = False
-        print(f"Masking: {params.need_mask}")
+    
+    print(f"Using {params.objective} objective {'with' if params.need_mask else 'without'} masking")
     model = CBraMod(
         params.in_dim, params.out_dim, params.d_model, params.dim_feedforward, params.seq_len, params.n_layer,
         params.nhead, params.objective

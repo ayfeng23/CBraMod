@@ -10,7 +10,7 @@ class CBraMod(nn.Module):
                     nhead=8, objective="recon"):
         super().__init__()
         self.objective = objective
-        self.patch_embedding = PatchEmbedding(in_dim, out_dim, d_model, seq_len)
+        self.patch_embedding = PatchEmbedding(in_dim, out_dim, d_model, seq_len, objective)
         encoder_layer = TransformerEncoderLayer(
             d_model=d_model, nhead=nhead, dim_feedforward=dim_feedforward, batch_first=True, norm_first=True,
             activation=F.gelu, objective=objective
@@ -34,12 +34,16 @@ class CBraMod(nn.Module):
         return out
 
 class PatchEmbedding(nn.Module):
-    def __init__(self, in_dim, out_dim, d_model, seq_len):
+    def __init__(self, in_dim, out_dim, d_model, seq_len, objective):
         super().__init__()
         self.d_model = d_model
+        self.objective = objective
+        # NTP path: pad=0 in the conv; we apply asymmetric F.pad in forward to keep time causal.
+        # Recon path: standard symmetric padding.
+        pos_padding = 0 if objective == "ntp" else (9, 3)
         self.positional_encoding = nn.Sequential(
-            nn.Conv2d(in_channels=d_model, out_channels=d_model, kernel_size=(19, 7), stride=(1, 1), padding=(9, 3),
-                      groups=d_model),
+            nn.Conv2d(in_channels=d_model, out_channels=d_model, kernel_size=(19, 7), stride=(1, 1),
+                      padding=pos_padding, groups=d_model),
         )
         self.mask_encoding = nn.Parameter(torch.zeros(in_dim), requires_grad=False)
         # self.mask_encoding = nn.Parameter(torch.randn(in_dim), requires_grad=True)
@@ -77,9 +81,16 @@ class PatchEmbedding(nn.Module):
             mask_x = x.clone()
             mask_x[mask == 1] = self.mask_encoding
 
-        mask_x = mask_x.contiguous().view(bz, 1, ch_num * patch_num, patch_size)
-        patch_emb = self.proj_in(mask_x)
-        patch_emb = patch_emb.permute(0, 2, 1, 3).contiguous().view(bz, ch_num, patch_num, self.d_model)
+        if self.objective == "ntp":
+            # Per-patch projection: each patch is its own batch item so GroupNorm
+            # statistics don't pool across time positions (which would leak future).
+            proj_input = mask_x.contiguous().view(bz * ch_num * patch_num, 1, 1, patch_size)
+            patch_emb = self.proj_in(proj_input)
+            patch_emb = patch_emb.contiguous().view(bz, ch_num, patch_num, self.d_model)
+        else:
+            proj_input = mask_x.contiguous().view(bz, 1, ch_num * patch_num, patch_size)
+            patch_emb = self.proj_in(proj_input)
+            patch_emb = patch_emb.permute(0, 2, 1, 3).contiguous().view(bz, ch_num, patch_num, self.d_model)
 
         mask_x = mask_x.contiguous().view(bz*ch_num*patch_num, patch_size)
         spectral = torch.fft.rfft(mask_x, dim=-1, norm='forward')
@@ -89,7 +100,12 @@ class PatchEmbedding(nn.Module):
         # print(spectral_emb[5, 5, 5, :])
         patch_emb = patch_emb + spectral_emb
 
-        positional_embedding = self.positional_encoding(patch_emb.permute(0, 3, 1, 2))
+        pos_embed_input = patch_emb.permute(0, 3, 1, 2)
+        if self.objective == "ntp":
+            # Asymmetric pad: 6 on the past side of time (k_t - 1), 0 on future side; symmetric 9/9 on channels.
+            # First patch sees only itself: _ _ _ _ _ _ x0 -> f(x0), no future leakage.
+            pos_embed_input = F.pad(pos_embed_input, (6, 0, 9, 9))
+        positional_embedding = self.positional_encoding(pos_embed_input)
         positional_embedding = positional_embedding.permute(0, 2, 3, 1)
 
         patch_emb = patch_emb + positional_embedding

@@ -41,6 +41,7 @@ class TransformerEncoderLayer(nn.Module):
                  bias: bool = True, device=None, dtype=None) -> None:
         factory_kwargs = {'device': device, 'dtype': dtype}
         super().__init__()
+        self.objective = objective
         self.self_attn_s = nn.MultiheadAttention(d_model//2, nhead // 2, dropout=dropout,
                                                  bias=bias, batch_first=batch_first,
                                                  **factory_kwargs)
@@ -89,8 +90,6 @@ class TransformerEncoderLayer(nn.Module):
         x = src
         if self.objective == "ntp": 
             is_causal = True
-            patch_num = x.shape[-2]
-            causal_attn_mask = _generate_square_subsequent_mask(patch_num, device=mask.device, dtype=mask.dtype)
         x = x + self._sa_block(self.norm1(x), src_mask, src_key_padding_mask, is_causal=is_causal)
         x = x + self._ff_block(self.norm2(x))
         return x
@@ -108,6 +107,10 @@ class TransformerEncoderLayer(nn.Module):
                              key_padding_mask=key_padding_mask,
                              need_weights=False)[0]
         xs = xs.contiguous().view(bz, patch_num, ch_num, patch_size//2).transpose(1, 2)
+        if is_causal:
+            patch_num = xt.shape[-2]
+            causal_attn_mask = _generate_square_subsequent_mask(patch_num, device=xt.device, dtype=xt.dtype)
+            attn_mask = causal_attn_mask if attn_mask is None else attn_mask + causal_attn_mask
         xt = self.self_attn_t(xt, xt, xt,
                               attn_mask=attn_mask,
                               key_padding_mask=key_padding_mask,
