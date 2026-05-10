@@ -1,0 +1,96 @@
+TUH_EEG (TUEG, v2.0.1) -- pretraining corpus
+1,109,545 windows (matches paper). 944 GB merged LMDB.
+
+Download:
+  mkdir -p /home/ayf4/scratch_pi_zf59/ayf4/data/v2.0.1
+  rsync -auvxL -e "ssh -i ~/.ssh/id_ed25519_yale" \
+    nedc-tuh-eeg@www.isip.piconepress.com:data/tuh_eeg/v2.0.1/ \
+    /home/ayf4/scratch_pi_zf59/ayf4/data/v2.0.1/
+
+Preprocess (151 shards via SLURM array, then merge to one LMDB):
+  sbatch preprocessing/submit_tueg.slurm
+  # after all 151 shard_NNN.lmdb finish:
+  python preprocessing/merge_lmdb.py \
+    --shards_dir /home/ayf4/scratch_pi_zf59/ayf4/data/tueg_v2.0.1_shards \
+    --out        /home/ayf4/scratch_pi_zf59/ayf4/data/tueg_v2.0.1_lmdb
+
+Pretrain:
+  EPOCHS=40 BATCH_SIZE=128 LR=5e-4 sbatch submit_pretrain.slurm
+  # outputs: /home/ayf4/scratch_pi_zf59/ayf4/aic_results/cbramod_pretrain/run_<JOBID>/epoch<N>_loss<X>.pth
+
+
+TUEV (v2.0.1) -- finetune dataset (event classification, 6-class)
+68,445 train / 15,487 val / 29,421 test = 113,353 (matches paper).
+
+Download:
+  mkdir -p /home/ayf4/scratch_pi_zf59/ayf4/data/tuev_v2.0.1
+  rsync -auvxL -e "ssh -i ~/.ssh/id_ed25519_yale" \
+    nedc-tuh-eeg@www.isip.piconepress.com:data/tuh_eeg/tuh_eeg_events/v2.0.1/ \
+    /home/ayf4/scratch_pi_zf59/ayf4/data/tuev_v2.0.1/
+
+Preprocess:
+  python preprocessing/preprocessing_tuev.py
+  # input:  /home/ayf4/scratch_pi_zf59/ayf4/data/tuev_v2.0.1/edf/{train,eval}
+  # final:  /home/ayf4/scratch_pi_zf59/ayf4/data/tuev_v2.0.1_processed/processed/{processed_train,processed_eval,processed_test}
+  # one .pkl per event with {signal, offending_channel, label}.
+
+Finetune:
+  python finetune_main.py \
+    --downstream_dataset TUEV \
+    --datasets_dir       /home/ayf4/scratch_pi_zf59/ayf4/data/tuev_v2.0.1_processed/processed \
+    --num_of_classes     6 \
+    --foundation_dir     <path-to-pretrained-checkpoint>.pth \
+    --model_dir          /home/ayf4/scratch_pi_zf59/ayf4/aic_results/cbramod_finetune/tuev_run \
+    --cuda 0
+
+
+FACED -- finetune dataset (emotion recognition, 9-class)
+6,720 train / 1,680 val / 1,932 test = 10,332 (matches paper).
+
+Download (Synapse syn50615881 -> Processed_data.zip downloaded locally then rsync'd to cluster):
+  # on local: rsync -avhP /local/path/Processed_data.zip ayf4@bouchet.ycrc.yale.edu:~/scratch_pi_zf59/ayf4/data/faced/
+  # on cluster:
+  cd /home/ayf4/scratch_pi_zf59/ayf4/data/faced && unzip -q Processed_data.zip
+  # produces /home/ayf4/scratch_pi_zf59/ayf4/data/faced/Processed_data/sub000.pkl ... sub122.pkl
+
+Preprocess:
+  python preprocessing/preprocessing_faced.py
+  # input:  /home/ayf4/scratch_pi_zf59/ayf4/data/faced/Processed_data/
+  # output: /home/ayf4/scratch_pi_zf59/ayf4/data/faced_processed (single LMDB env)
+  # __keys__ in LMDB is dict {train, val, test} of sample-key lists.
+
+Finetune:
+  python finetune_main.py \
+    --downstream_dataset FACED \
+    --datasets_dir       /home/ayf4/scratch_pi_zf59/ayf4/data/faced_processed \
+    --num_of_classes     9 \
+    --foundation_dir     <path-to-pretrained-checkpoint>.pth \
+    --model_dir          /home/ayf4/scratch_pi_zf59/ayf4/aic_results/cbramod_finetune/faced_run \
+    --cuda 0
+
+
+PhysioNet-MI -- finetune dataset (motor imagery, 4-class)
+6,293 train / 1,734 val / 1,803 test = 9,830 samples (paper: 9,837 -- within 0.07%).
+Sample shape (64 ch x 4 sec x 200 samples/sec).
+
+Download (rsync blocked from Yale -> parallel HTTP via Python script):
+  # rsync -Cavz physionet.org::physionet/eegmmidb/1.0.0/ <dest>/   # this is BLOCKED on Bouchet
+  # fallback: parallel HTTP downloader, 32 threads, ~10 min wall time:
+  /home/ayf4/.conda/envs/cbramod/bin/python /tmp/dl_eegmmidb.py
+  # script source kept in /tmp -- copy to repo if you want it tracked.
+  # produces /home/ayf4/scratch_pi_zf59/ayf4/data/eegmmidb/physionet.org/files/eegmmidb/1.0.0/S001..S109/
+
+Preprocess:
+  python preprocessing/preprocessing_physio.py
+  # input:  /home/ayf4/scratch_pi_zf59/ayf4/data/eegmmidb/physionet.org/files/eegmmidb/1.0.0/
+  # output: /home/ayf4/scratch_pi_zf59/ayf4/data/physio_mi_processed_average (single LMDB env)
+  # uses runs {04,06,08,10,12,14} for motor imagery; train/val/test = 70/19/20 subjects.
+
+Finetune:
+  python finetune_main.py \
+    --downstream_dataset PhysioNet-MI \
+    --datasets_dir       /home/ayf4/scratch_pi_zf59/ayf4/data/physio_mi_processed_average \
+    --num_of_classes     4 \
+    --foundation_dir     <path-to-pretrained-checkpoint>.pth \
+    --model_dir          /home/ayf4/scratch_pi_zf59/ayf4/aic_results/cbramod_finetune/physio_run \
+    --cuda 0

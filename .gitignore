@@ -1,1 +1,40 @@
 .idea
+.vscode
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ipynb_checkpoints/
+
+# Model checkpoints / large artifacts
+*.pth
+*.pt
+*.ckpt
+
+# Data
+*.lmdb
+*.mdb
+*.edf
+*.pkl
+*.npy
+*.npz
+*.zip
+*.tar
+*.tar.gz
+
+# Logs / experiment outputs
+wandb/
+runs/
+lightning_logs/
+*.log
+*.out
+*.err
+slurm-*.out
+
+# Papers / reference docs (keep out of source repo)
+*.pdf
+
+# OS / editor cruft
+.DS_Store
+*.swp

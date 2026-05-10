@@ -164,8 +164,8 @@ def save_pickle(object, filename):
 TUEV dataset is downloaded from https://isip.piconepress.com/projects/tuh_eeg/html/downloads.shtml
 """
 
-root = "/data/zcb/data/TUEV/edf"
-target = "/data/datasets/BigDownstream/TUEV_refine"
+root = "/home/ayf4/scratch_pi_zf59/ayf4/data/tuev_v2.0.1/edf"
+target = "/home/ayf4/scratch_pi_zf59/ayf4/data/tuev_v2.0.1_processed"
 
 train_out_dir = os.path.join(target, "processed_train")
 eval_out_dir = os.path.join(target, "processed_eval")
@@ -199,7 +199,7 @@ load_up_objects(
 
 
 #transfer to train, eval, and test
-root = "/data/datasets/BigDownstream/TUEV_refine"
+root = "/home/ayf4/scratch_pi_zf59/ayf4/data/tuev_v2.0.1_processed"
 # seed = 4523
 # np.random.seed(seed)
 

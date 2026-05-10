@@ -48,17 +48,17 @@ def preprocessing_recording(file_path, file_key_list: list, db: lmdb.open):
         for ch in selected_channels['02_tcp_le']:
             if ch not in raw.info['ch_names']:
                 return
-        raw.pick_channels(selected_channels['02_tcp_le'], ordered=True)
+        raw.pick(selected_channels['02_tcp_le'])
     elif '01_tcp_ar' in file_path:
         for ch in selected_channels['01_tcp_ar']:
             if ch not in raw.info['ch_names']:
                 return
-        raw.pick_channels(selected_channels['01_tcp_ar'], ordered=True)
+        raw.pick(selected_channels['01_tcp_ar'])
     elif '03_tcp_ar_a' in file_path:
         for ch in selected_channels['03_tcp_ar_a']:
             if ch not in raw.info['ch_names']:
                 return
-        raw.pick_channels(selected_channels['03_tcp_ar_a'], ordered=True)
+        raw.pick(selected_channels['03_tcp_ar_a'])
     else:
         return
     # print(raw.info)
@@ -72,31 +72,31 @@ def preprocessing_recording(file_path, file_key_list: list, db: lmdb.open):
     if points < 300 * 200:
         return
     a = points % (30 * 200)
-    eeg_array = eeg_array[60 * 200:-(a+60 * 200), :]
+    eeg_array = eeg_array[60 * 200:points-(a+60 * 200), :]
+    if eeg_array.shape[0] < 30 * 200: return #should return a 30 second window
     # print(eeg_array.shape)
     eeg_array = eeg_array.reshape(-1, 30, 200, chs)
     eeg_array = eeg_array.transpose(0, 3, 1, 2)
-    print(eeg_array.shape)
+    # print(eeg_array.shape)
     file_name = file_path.split('/')[-1][:-4]
 
-    for i, sample in enumerate(eeg_array):
-        # print(i, sample.shape)
-        if np.max(np.abs(sample)) < 100:
-            sample_key = f'{file_name}_{i}'
-            print(sample_key)
-            file_key_list.append(sample_key)
-            txn = db.begin(write=True)
-            txn.put(key=sample_key.encode(), value=pickle.dumps(sample))
-            txn.commit()
+    with db.begin(write=True) as txn:
+        for i, sample in enumerate(eeg_array):
+            # print(i, sample.shape)
+            if np.max(np.abs(sample)) < 100:
+                sample_key = f'{file_name}_{i}'
+                # print(sample_key)
+                file_key_list.append(sample_key)
+                txn.put(key=sample_key.encode(), value=pickle.dumps(sample))
 
 if __name__ == '__main__':
     setup_seed(1)
-    file_path_list = iter_files('path...')
+    file_path_list = iter_files('/home/ayf4/scratch_pi_zf59/ayf4/data/v2.0.1/edf')
 
     file_path_list = sorted(file_path_list)
     random.shuffle(file_path_list)
     # print(file_path_list)
-    db = lmdb.open(r'path...', map_size=1649267441664)
+    db = lmdb.open(r'/home/ayf4/scratch_pi_zf59/ayf4/data/tueg_v2.0.1_lmdb', map_size=1649267441664)
     file_key_list = []
     for file_path in tqdm(file_path_list):
         preprocessing_recording(file_path, file_key_list, db)

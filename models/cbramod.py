@@ -7,12 +7,13 @@ from models.criss_cross_transformer import TransformerEncoderLayer, TransformerE
 
 class CBraMod(nn.Module):
     def __init__(self, in_dim=200, out_dim=200, d_model=200, dim_feedforward=800, seq_len=30, n_layer=12,
-                    nhead=8):
+                    nhead=8, objective="recon"):
         super().__init__()
+        self.objective = objective
         self.patch_embedding = PatchEmbedding(in_dim, out_dim, d_model, seq_len)
         encoder_layer = TransformerEncoderLayer(
             d_model=d_model, nhead=nhead, dim_feedforward=dim_feedforward, batch_first=True, norm_first=True,
-            activation=F.gelu
+            activation=F.gelu, objective=objective
         )
         self.encoder = TransformerEncoder(encoder_layer, num_layers=n_layer, enable_nested_tensor=False)
         self.proj_out = nn.Sequential(
@@ -104,6 +105,7 @@ def _weights_init(m):
     elif isinstance(m, nn.BatchNorm1d):
         nn.init.constant_(m.weight, 1)
         nn.init.constant_(m.bias, 0)
+    # Why only for 1D and not 2D or MHSA
 
 
 

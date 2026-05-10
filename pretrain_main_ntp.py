@@ -22,7 +22,6 @@ def main():
     parser.add_argument('--seed', type=int, default=42, help='random seed (default: 0)')
     parser.add_argument('--cuda', type=int, default=0, help='cuda number (default: 1)')
     parser.add_argument('--parallel', type=bool, default=False, help='parallel')
-    parser.add_argument('--objective', type=str, default="recon", help='ntp or recon')
     parser.add_argument('--epochs', type=int, default=40, help='number of epochs (default: 5)')
     parser.add_argument('--batch_size', type=int, default=128, help='batch size for training (default: 32)')
     parser.add_argument('--lr', type=float, default=5e-4, help='learning rate (default: 1e-3)')
@@ -50,16 +49,6 @@ def main():
     parser.add_argument('--wandb_project', type=str, default='cbramod-pretrain-tueg')
     parser.add_argument('--wandb_name', type=str, default=None,
                         help='wandb run name (default: wandb auto / SLURM job id)')
-    parser.add_argument('--resume', type=str, default=None,
-                        help='checkpoint to warm-start from (model state_dict). '
-                             'If a sibling <ckpt>.full.pth exists, optimizer/scheduler/epoch are restored too.')
-    parser.add_argument('--resume_epoch', type=int, default=None,
-                        help='manually specify the epoch the checkpoint was saved at. '
-                             'Used only when no .full.pth companion exists: training resumes from this epoch, '
-                             'optimizer starts fresh, scheduler is fast-forwarded to match LR.')
-    parser.add_argument('--resume_lr', type=float, default=None,
-                        help='override LR after warm-start (useful when only model weights are loaded). '
-                             'If unset and full state was restored, the scheduler keeps its course.')
     params = parser.parse_args()
     print(params)
     setup_seed(params.seed)
@@ -71,12 +60,9 @@ def main():
         num_workers=8,
         shuffle=True,
     )
-    if params.objective == "ntp":
-        params.need_mask = False
-        print(f"Masking: {params.need_mask}")
     model = CBraMod(
         params.in_dim, params.out_dim, params.d_model, params.dim_feedforward, params.seq_len, params.n_layer,
-        params.nhead, params.objective
+        params.nhead
     )
     trainer = Trainer(params, data_loader, model)
     trainer.train()

@@ -8,8 +8,8 @@ import mne
 
 tasks = ['04', '06', '08', '10', '12', '14'] # select the data for motor imagery
 
-root_dir = '/data/datasets/eeg-motor-movementimagery-dataset-1.0.0/files'
-files = [file for file in os.listdir(root_dir)]
+root_dir = '/home/ayf4/scratch_pi_zf59/ayf4/data/eegmmidb/physionet.org/files/eegmmidb/1.0.0'
+files = [f for f in os.listdir(root_dir) if f.startswith('S') and f[1:].isdigit()]
 files = sorted(files)
 
 files_dict = {
@@ -35,13 +35,13 @@ selected_channels = ['Fc5.', 'Fc3.', 'Fc1.', 'Fcz.', 'Fc2.', 'Fc4.', 'Fc6.', 'C5
                      'P3..', 'P1..', 'Pz..', 'P2..', 'P4..', 'P6..', 'P8..', 'Po7.', 'Po3.', 'Poz.', 'Po4.', 'Po8.',
                      'O1..', 'Oz..', 'O2..', 'Iz..']
 
-db = lmdb.open('/data/datasets/eeg-motor-movementimagery-dataset-1.0.0/processed_average', map_size=4614542346)
+db = lmdb.open('/home/ayf4/scratch_pi_zf59/ayf4/data/physio_mi_processed_average', map_size=4614542346)
 
 for files_key in files_dict.keys():
     for file in files_dict[files_key]:
         for task in tasks:
             raw = mne.io.read_raw_edf(os.path.join(root_dir, file, f'{file}R{task}.edf'), preload=True)
-            raw.pick_channels(selected_channels, ordered=True)
+            raw.pick(selected_channels)
             if len(raw.info['bads']) > 0:
                 print('interpolate_bads')
                 raw.interpolate_bads()

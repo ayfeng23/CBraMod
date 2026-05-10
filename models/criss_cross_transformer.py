@@ -36,7 +36,7 @@ class TransformerEncoderLayer(nn.Module):
     __constants__ = ['norm_first']
 
     def __init__(self, d_model: int, nhead: int, dim_feedforward: int = 2048, dropout: float = 0.1,
-                 activation: Union[str, Callable[[Tensor], Tensor]] = F.relu,
+                 activation: Union[str, Callable[[Tensor], Tensor]] = F.relu, objective: str = "recon",
                  layer_norm_eps: float = 1e-5, batch_first: bool = False, norm_first: bool = False,
                  bias: bool = True, device=None, dtype=None) -> None:
         factory_kwargs = {'device': device, 'dtype': dtype}
@@ -87,6 +87,10 @@ class TransformerEncoderLayer(nn.Module):
             is_causal: bool = False) -> Tensor:
 
         x = src
+        if self.objective == "ntp": 
+            is_causal = True
+            patch_num = x.shape[-2]
+            causal_attn_mask = _generate_square_subsequent_mask(patch_num, device=mask.device, dtype=mask.dtype)
         x = x + self._sa_block(self.norm1(x), src_mask, src_key_padding_mask, is_causal=is_causal)
         x = x + self._ff_block(self.norm2(x))
         return x
@@ -94,7 +98,7 @@ class TransformerEncoderLayer(nn.Module):
     # self-attention block
     def _sa_block(self, x: Tensor,
                   attn_mask: Optional[Tensor], key_padding_mask: Optional[Tensor], is_causal: bool = False) -> Tensor:
-        bz, ch_num, patch_num, patch_size = x.shape
+        bz, ch_num, patch_num, patch_size = x.shape #patch_size should be d_model here
         xs = x[:, :, :, :patch_size // 2]
         xt = x[:, :, :, patch_size // 2:]
         xs = xs.transpose(1, 2).contiguous().view(bz*patch_num, ch_num, patch_size // 2)
