@@ -8,15 +8,10 @@ import lmdb
 import pickle
 
 class CustomDataset(Dataset):
-    def __init__(
-            self,
-            data_dir,
-            mode='train',
-    ):
+    def __init__(self, db, keys):
         super(CustomDataset, self).__init__()
-        self.db = lmdb.open(data_dir, readonly=True, lock=False, readahead=True, meminit=False)
-        with self.db.begin(write=False) as txn:
-            self.keys = pickle.loads(txn.get('__keys__'.encode()))[mode]
+        self.db = db
+        self.keys = keys
 
     def __len__(self):
         return len((self.keys))
@@ -44,9 +39,14 @@ class LoadDataset(object):
         self.datasets_dir = params.datasets_dir
 
     def get_data_loader(self):
-        train_set = CustomDataset(self.datasets_dir, mode='train')
-        val_set = CustomDataset(self.datasets_dir, mode='val')
-        test_set = CustomDataset(self.datasets_dir, mode='test')
+        # lmdb-py refuses to open the same env twice in one process; share one env
+        # across train/val/test (the splits are key sets within one db).
+        db = lmdb.open(self.datasets_dir, readonly=True, lock=False, readahead=True, meminit=False)
+        with db.begin(write=False) as txn:
+            keys = pickle.loads(txn.get('__keys__'.encode()))
+        train_set = CustomDataset(db, keys['train'])
+        val_set = CustomDataset(db, keys['val'])
+        test_set = CustomDataset(db, keys['test'])
         print(len(train_set), len(val_set), len(test_set))
         print(len(train_set)+len(val_set)+len(test_set))
         data_loader = {

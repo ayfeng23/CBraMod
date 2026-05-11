@@ -1,3 +1,6 @@
+import os
+import subprocess
+
 import numpy as np
 import torch
 from ptflops import get_model_complexity_info
@@ -11,6 +14,37 @@ try:
     import wandb
 except ImportError:
     wandb = None
+
+_EVAL_SLURM_SCRIPT = '/home/ayf4/cbramod/submit_finetune_eval.slurm'
+
+
+def _trigger_async_eval(params, model_path, epoch_1idx, is_final, wandb_run_id='', wandb_project=''):
+    output_dir = os.path.join(params.model_dir, f'eval_epoch{epoch_1idx}')
+    os.makedirs(output_dir, exist_ok=True)
+    save_models_bool = 'true' if is_final else 'false'
+    need_mask_bool = 'true' if getattr(params, 'need_mask', True) else 'false'
+    cmd = [
+        'sbatch',
+        f'--partition={getattr(params, "eval_partition", "gpu_rtx6000")}',
+        f'--time={getattr(params, "eval_time", "02:00:00")}',
+        f'--output={output_dir}/slurm_%j.out',
+        f'--error={output_dir}/slurm_%j.err',
+        _EVAL_SLURM_SCRIPT,
+        model_path,
+        str(epoch_1idx),
+        params.model_dir,
+        save_models_bool,
+        getattr(params, 'objective', 'recon'),
+        need_mask_bool,
+        wandb_run_id,
+        wandb_project,
+    ]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=30, check=False)
+        print(f"[eval-trigger] epoch={epoch_1idx} save_models={save_models_bool} rc={r.returncode} "
+              f"stdout={r.stdout.strip()!r} stderr={r.stderr.strip()!r}")
+    except Exception as e:
+        print(f"[eval-trigger] sbatch failed at epoch={epoch_1idx}: {e}")
 
 
 class Trainer(object):
@@ -156,7 +190,7 @@ class Trainer(object):
                     'epoch/lr': learning_rate,
                     'epoch/index': epoch + 1,
                 }, step=global_step)
-            if  mean_loss < best_loss or (epoch % 5 == 0):
+            if  mean_loss < best_loss or ((epoch+1) % 5 == 0) or (epoch + 1) == self.params.epochs:
                 model_path = rf'{self.params.model_dir}/epoch{epoch+1}_loss{mean_loss}.pth'
                 torch.save(self.model.state_dict(), model_path)
                 torch.save({
@@ -172,5 +206,15 @@ class Trainer(object):
                     if self.use_wandb:
                         wandb.summary['best_loss'] = float(best_loss)
                         wandb.summary['best_epoch'] = epoch + 1
+                if getattr(self.params, 'eval_during_pretrain', False) and ((epoch + 1) % 5 == 0 or (epoch + 1) == self.params.epochs):
+                    wandb_run_id = wandb.run.id if (self.use_wandb and wandb is not None and wandb.run is not None) else ''
+                    wandb_project = getattr(self.params, 'wandb_project', 'cbramod-pretrain-tueg') if wandb_run_id else ''
+                    _trigger_async_eval(
+                        self.params, model_path,
+                        epoch_1idx=epoch + 1,
+                        is_final=((epoch + 1) == self.params.epochs),
+                        wandb_run_id=wandb_run_id,
+                        wandb_project=wandb_project,
+                    )
         if self.use_wandb:
             wandb.finish()

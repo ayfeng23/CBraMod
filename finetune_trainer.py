@@ -135,11 +135,13 @@ class Trainer(object):
                 )
             )
             print(cm)
-            if not os.path.isdir(self.params.model_dir):
-                os.makedirs(self.params.model_dir)
-            model_path = self.params.model_dir + "/epoch{}_acc_{:.5f}_kappa_{:.5f}_f1_{:.5f}.pth".format(best_f1_epoch, acc, kappa, f1)
-            torch.save(self.model.state_dict(), model_path)
-            print("model save in " + model_path)
+            if getattr(self.params, 'save_ckpt', True):
+                if not os.path.isdir(self.params.model_dir):
+                    os.makedirs(self.params.model_dir)
+                model_path = self.params.model_dir + "/epoch{}_acc_{:.5f}_kappa_{:.5f}_f1_{:.5f}.pth".format(best_f1_epoch, acc, kappa, f1)
+                torch.save(self.model.state_dict(), model_path)
+                print("model save in " + model_path)
+            return {'acc': float(acc), 'kappa': float(kappa), 'f1': float(f1), 'best_val_epoch': int(best_f1_epoch)}
 
     def train_for_binaryclass(self):
         acc_best = 0
@@ -208,11 +210,13 @@ class Trainer(object):
                 )
             )
             print(cm)
-            if not os.path.isdir(self.params.model_dir):
-                os.makedirs(self.params.model_dir)
-            model_path = self.params.model_dir + "/epoch{}_acc_{:.5f}_pr_{:.5f}_roc_{:.5f}.pth".format(best_f1_epoch, acc, pr_auc, roc_auc)
-            torch.save(self.model.state_dict(), model_path)
-            print("model save in " + model_path)
+            if getattr(self.params, 'save_ckpt', True):
+                if not os.path.isdir(self.params.model_dir):
+                    os.makedirs(self.params.model_dir)
+                model_path = self.params.model_dir + "/epoch{}_acc_{:.5f}_pr_{:.5f}_roc_{:.5f}.pth".format(best_f1_epoch, acc, pr_auc, roc_auc)
+                torch.save(self.model.state_dict(), model_path)
+                print("model save in " + model_path)
+            return {'acc': float(acc), 'pr_auc': float(pr_auc), 'roc_auc': float(roc_auc), 'best_val_epoch': int(best_f1_epoch)}
 
     def train_for_regression(self):
         corrcoef_best = 0
@@ -278,8 +282,10 @@ class Trainer(object):
                 )
             )
 
-            if not os.path.isdir(self.params.model_dir):
-                os.makedirs(self.params.model_dir)
-            model_path = self.params.model_dir + "/epoch{}_corrcoef_{:.5f}_r2_{:.5f}_rmse_{:.5f}.pth".format(best_r2_epoch, corrcoef, r2, rmse)
-            torch.save(self.model.state_dict(), model_path)
-            print("model save in " + model_path)
+            if getattr(self.params, 'save_ckpt', True):
+                if not os.path.isdir(self.params.model_dir):
+                    os.makedirs(self.params.model_dir)
+                model_path = self.params.model_dir + "/epoch{}_corrcoef_{:.5f}_r2_{:.5f}_rmse_{:.5f}.pth".format(best_r2_epoch, corrcoef, r2, rmse)
+                torch.save(self.model.state_dict(), model_path)
+                print("model save in " + model_path)
+            return {'corrcoef': float(corrcoef), 'r2': float(r2), 'rmse': float(rmse), 'best_val_epoch': int(best_r2_epoch)}

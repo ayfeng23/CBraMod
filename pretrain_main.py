@@ -60,6 +60,16 @@ def main():
     parser.add_argument('--resume_lr', type=float, default=None,
                         help='override LR after warm-start (useful when only model weights are loaded). '
                              'If unset and full state was restored, the scheduler keeps its course.')
+    parser.add_argument('--eval_during_pretrain', action='store_true',
+                        help='At every (epoch+1) %% 5 == 0 checkpoint save, submit an sbatch '
+                             'job that runs finetune_eval_runner.py on the saved checkpoint. '
+                             'Pretraining is not blocked; the eval runs on its own GPU.')
+    parser.add_argument('--eval_partition', type=str, default='gpu_rtx6000',
+                        help='SLURM --partition for async eval jobs (default gpu_rtx6000)')
+    parser.add_argument('--eval_time', type=str, default='01:30:00',
+                        help='SLURM --time budget per async eval job. '
+                             '4 benchmarks @ 50ep ~= 60 min on RTX6000; 1.5h is safe. '
+                             'Bump to 04:00:00 if you re-enable --warmdown in submit_finetune_eval.slurm.')
     params = parser.parse_args()
     print(params)
     setup_seed(params.seed)
