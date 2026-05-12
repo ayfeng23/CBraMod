@@ -115,17 +115,31 @@ def main():
     print(f'[eval] epochs={args.epochs}  save_models={args.save_models}  warmdown={args.warmdown}')
     print(f'[eval] benchmarks={benchmarks}  skipped(empty datasets_dir)={skipped}')
 
+    # While the parent pretrain run is still active, writes from a second
+    # wandb.init(resume='allow') process are silently dropped by the backend
+    # (concurrent-writer is undefined in wandb 0.26). But evals that land AFTER
+    # pretrain calls wandb.finish() — notably the epoch-40 trigger and anything
+    # in the SLURM queue when pretrain ends — DO get a clean resume and their
+    # writes stick. So we still attempt the resume here; for the epochs whose
+    # writes got dropped, sync_evals_to_wandb.py backfills from
+    # eval_epoch*/results.json.
     wandb_run = None
     if args.parent_wandb_run_id:
         if args.pretrain_epoch is None:
             raise ValueError('--pretrain-epoch is required when --parent-wandb-run-id is set')
-        import wandb as _wandb
-        wandb_run = _wandb.init(
-            project=args.wandb_project,
-            id=args.parent_wandb_run_id,
-            resume='allow',
-        )
-        print(f'[eval] wandb resumed run id={wandb_run.id} project={args.wandb_project}')
+        try:
+            import wandb as _wandb
+            wandb_run = _wandb.init(
+                project=args.wandb_project,
+                id=args.parent_wandb_run_id,
+                resume='allow',
+            )
+            _wandb.define_metric('pretrain_epoch')
+            _wandb.define_metric('eval/*', step_metric='pretrain_epoch')
+            print(f'[eval] wandb resumed run id={wandb_run.id} project={args.wandb_project}')
+        except Exception as e:
+            print(f'[eval] WARNING: wandb.init failed ({type(e).__name__}: {e}); continuing without wandb')
+            wandb_run = None
 
     torch.cuda.set_device(args.cuda)
 
@@ -173,9 +187,10 @@ def main():
             json.dump(res, f, indent=2)
         print(f'[eval] {b}: wall {res["wall_minutes"]:.2f} min  metrics={res["metrics"]}')
         if wandb_run is not None:
-            for metric_name, val in res['metrics'].items():
-                wandb_run.summary[f'eval/{b}/{metric_name}{epoch_suffix}'] = val
-            wandb_run.summary[f'eval/{b}/wall_minutes{epoch_suffix}'] = res['wall_minutes']
+            log_payload = {f'eval/{b}/{k}': v for k, v in res['metrics'].items()}
+            log_payload[f'eval/{b}/wall_minutes'] = res['wall_minutes']
+            log_payload['pretrain_epoch'] = args.pretrain_epoch
+            wandb_run.log(log_payload)
 
     aggregate['total_wall_seconds'] = time.time() - overall_t0
     aggregate['total_wall_minutes'] = aggregate['total_wall_seconds'] / 60.0
@@ -187,9 +202,13 @@ def main():
     print(f'[eval] TOTAL wall {aggregate["total_wall_minutes"]:.2f} min across {len(benchmarks)} benchmarks')
 
     if wandb_run is not None:
-        # quiet finish so we don't dump huge logs; this Python-side instance disconnects
-        # without marking the server-side run as terminated (we used resume='allow').
         wandb_run.finish(quiet=True)
+        # Sentinel so sync_evals_to_wandb.py doesn't double-log this epoch.
+        # Only created when wandb.init succeeded AND we got here — the writes
+        # have been pushed to the wandb service.
+        with open(os.path.join(args.output_dir, '.wandb_logged'), 'w') as f:
+            f.write(f'parent_run_id={args.parent_wandb_run_id}\npretrain_epoch={args.pretrain_epoch}\n')
+
 
 
 if __name__ == '__main__':

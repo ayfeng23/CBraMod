@@ -39,8 +39,13 @@ def _trigger_async_eval(params, model_path, epoch_1idx, is_final, wandb_run_id='
         wandb_run_id,
         wandb_project,
     ]
+    # Strip wandb's in-process service-token env vars. If left set, the child
+    # eval process inherits them via sbatch → SLURM env propagation, skips
+    # spawning its own wandb-core, and tries to connect to the parent's unix
+    # socket path which doesn't exist on its compute node (FileNotFoundError).
+    child_env = {k: v for k, v in os.environ.items() if k != 'WANDB_SERVICE'}
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=30, check=False)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=30, check=False, env=child_env)
         print(f"[eval-trigger] epoch={epoch_1idx} save_models={save_models_bool} rc={r.returncode} "
               f"stdout={r.stdout.strip()!r} stderr={r.stderr.strip()!r}")
     except Exception as e:

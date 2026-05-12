@@ -7,6 +7,11 @@
 
 set -euo pipefail
 
+# Strip inherited wandb service-token from the parent pretrain process; otherwise
+# wandb.init() tries to connect to the parent's unix socket which only exists
+# on the pretrain node, not this eval compute node.
+unset WANDB_SERVICE
+
 if [ "$#" -lt 6 ]; then
   echo "usage: $0 <ckpt_path> <pretrain_epoch> <parent_run_dir> <save_models:true|false> <objective> <need_mask:true|false> [<wandb_run_id> <wandb_project>]" >&2
   exit 2
